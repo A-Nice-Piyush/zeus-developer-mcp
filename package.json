@@ -1,0 +1,27 @@
+{
+  "name": "atlassian-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Atlassian Cloud JIRA and Confluence integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "atlassian-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.25.0",
+    "turndown": "^7.2.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.5"
+  }
+}
