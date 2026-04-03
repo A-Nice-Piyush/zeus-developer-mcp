@@ -72,6 +72,26 @@ export class AtlassianHttpClient {
     return this.request<T>("POST", `${this.baseUrl}${path}`, body);
   }
 
+  async postFormData(path: string, formData: FormData): Promise<string> {
+    const url = `${this.baseUrl}${path}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min for uploads
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: this.authHeader },
+        body: formData,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new AtlassianApiError(response.status, response.statusText, []);
+      }
+      return response.text();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async put<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("PUT", `${this.baseUrl}${path}`, body);
   }

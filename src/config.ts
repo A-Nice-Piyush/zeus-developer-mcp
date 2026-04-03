@@ -4,6 +4,16 @@ export interface AtlassianConfig {
   apiToken: string;
 }
 
+export interface VeracodeConfig {
+  apiId: string;
+  apiKey: string;
+  defaultAppName?: string;
+  github?: {
+    token: string;
+    repo: string; // "owner/repo" e.g. "inContact/POCR"
+  };
+}
+
 export function loadConfig(): AtlassianConfig {
   const baseUrl = process.env.ATLASSIAN_BASE_URL;
   const email = process.env.ATLASSIAN_EMAIL;
@@ -23,5 +33,40 @@ export function loadConfig(): AtlassianConfig {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     email,
     apiToken,
+  };
+}
+
+export interface SonarQubeConfig {
+  baseUrl: string;
+  token: string;
+  defaultProjectKey?: string;
+}
+
+export function loadVeracodeConfig(): VeracodeConfig | null {
+  const apiId = process.env.VERACODE_API_ID;
+  const apiKey = process.env.VERACODE_API_KEY;
+  if (!apiId || !apiKey) {
+    return null;
+  }
+  const githubToken = process.env.GITHUB_TOKEN;
+  const githubRepo = process.env.GITHUB_REPO; // format: "owner/repo"
+  return {
+    apiId,
+    apiKey,
+    defaultAppName: process.env.VERACODE_APP_NAME,
+    github: githubToken && githubRepo ? { token: githubToken, repo: githubRepo } : undefined,
+  };
+}
+
+export function loadSonarQubeConfig(): SonarQubeConfig | null {
+  const baseUrl = process.env.SONARQUBE_BASE_URL;
+  const token = process.env.SONARQUBE_TOKEN;
+  if (!baseUrl || !token) {
+    return null;
+  }
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    token,
+    defaultProjectKey: process.env.SONARQUBE_PROJECT_KEY,
   };
 }
