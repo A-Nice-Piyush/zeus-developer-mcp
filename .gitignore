@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .env
+.ghcr-secrets
+.ghcr-secrets.ps1

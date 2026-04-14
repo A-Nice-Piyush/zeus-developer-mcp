@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
+.claude/
+*.md
+!README.md
+*.mjs
+*.log
+coverage/
+.nyc_output/
