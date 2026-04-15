@@ -46,7 +46,7 @@ Pick the section for your tool below, create the file in your **project root**, 
         "ghcr.io/a-nice-piyush/zeus_dev_mcp:latest"
       ],
       "env": {
-        "ATLASSIAN_BASE_URL":           "https://yourcompany.atlassian.net",
+        "ATLASSIAN_BASE_URL":           "https://nice-ce-cxone-prod.atlassian.net",
         "ATLASSIAN_EMAIL":              "you@company.com",
         "ATLASSIAN_API_TOKEN":          "your-atlassian-api-token",
         "VERACODE_API_ID":              "your-veracode-api-id",
@@ -98,7 +98,7 @@ Create a `.vscode/` folder in your project root if it doesn't exist, then create
         "ghcr.io/a-nice-piyush/zeus_dev_mcp:latest"
       ],
       "env": {
-        "ATLASSIAN_BASE_URL":           "https://yourcompany.atlassian.net",
+        "ATLASSIAN_BASE_URL":           "https://nice-ce-cxone-prod.atlassian.net",
         "ATLASSIAN_EMAIL":              "you@company.com",
         "ATLASSIAN_API_TOKEN":          "your-atlassian-api-token",
         "VERACODE_API_ID":              "your-veracode-api-id",
