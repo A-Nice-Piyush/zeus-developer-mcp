@@ -22,8 +22,10 @@ RUN npm run build
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS production
 
-# Run as non-root for security
-RUN addgroup -S mcp && adduser -S mcp -G mcp
+# docker-cli is needed so this server can spawn the official SonarQube MCP
+# server container (mcp/sonarqube) at runtime via the mounted Docker socket.
+# curl + tar are used below to fetch the Aikido MCP tarball directly from npm.
+RUN apk add --no-cache docker-cli curl tar
 
 WORKDIR /app
 
@@ -31,11 +33,17 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
+# Bake the official Aikido MCP server (@aikidosec/mcp) into the image.
+# We fetch the tarball directly rather than installing via npm because the
+# package declares platform-specific optional deps (e.g. @esbuild/aix-ppc64)
+# in its npm-shrinkwrap.json that cause `npm ci` to fail cross-platform.
+# The published tarball contains a pre-bundled dist/index.js — no build needed.
+RUN mkdir -p /opt/aikido-mcp \
+    && curl -sSL https://registry.npmjs.org/@aikidosec/mcp/-/mcp-1.0.5.tgz \
+       | tar -xz -C /opt/aikido-mcp --strip-components=1
+
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
-
-# Drop to non-root user
-USER mcp
 
 # MCP servers communicate over stdio — no ports to expose
 # All configuration is injected via environment variables at runtime

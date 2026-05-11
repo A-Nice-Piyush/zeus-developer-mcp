@@ -1,418 +1,400 @@
-# Developer MCP Server
+# Zeus MCP Server
 
-An MCP (Model Context Protocol) server that connects AI assistants to developer tools — Jira, Confluence, Veracode SAST, and SonarQube — through a single server. It enables AI-driven workflows: read Jira stories, search Confluence docs, check security scan results, and fix code — all via natural language.
+A single Docker image that gives your AI assistant (Claude Code, VS Code Copilot, Cursor, etc.) access to **Jira, Confluence, Veracode, SonarQube, and Aikido Security** — all through natural language.
+
+Pull one image. Add one config file. Get 30+ tools.
 
 ---
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
-- [Environment Variables](#environment-variables)
-- [Atlassian (Jira & Confluence) Setup](#atlassian-jira--confluence-setup)
-- [Veracode Setup](#veracode-setup)
-- [SonarQube Setup](#sonarqube-setup)
-- [Git Branch Auto-Detection](#git-branch-auto-detection)
-- [VS Code MCP Configuration](#vs-code-mcp-configuration)
-- [Claude Code Configuration](#claude-code-configuration)
-- [Build & Run](#build--run)
+- [Quick Start](#quick-start)
+- [Configuration Reference](#configuration-reference)
+  - [Atlassian — Jira & Confluence](#atlassian--jira--confluence-required)
+  - [Veracode](#veracode-optional)
+  - [SonarQube](#sonarqube-optional)
+  - [Aikido Security](#aikido-security-optional)
+- [VS Code Setup](#vs-code-setup)
+- [Claude Code Setup](#claude-code-setup)
 - [Available Tools](#available-tools)
-- [Project Structure](#project-structure)
-- [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
+- [Building Locally](#building-locally)
 
 ---
 
-## Quick Start
+## How It Works
 
-```bash
-# 1. Install dependencies
-npm install
+You run one Docker container. Inside it, the Zeus MCP server starts up, connects to Atlassian directly, and on-demand spawns child processes for SonarQube and Aikido (their own official MCP servers). All of this is invisible — your AI sees one flat list of tools.
 
-# 2. Copy and configure environment variables
-cp .env.example .env
-# Edit .env with your credentials (see sections below)
-
-# 3. Build
-npm run build
-
-# 4. Run
-npm start
 ```
+AI Assistant (VS Code / Claude Code)
+        │  MCP protocol over stdio
+        ▼
+┌─────────────────────────────────────────┐
+│           zeus-mcp  (Docker)            │
+│                                         │
+│  ┌─────────────┐  ┌──────────────────┐  │
+│  │ Jira tools  │  │ Confluence tools │  │
+│  └─────────────┘  └──────────────────┘  │
+│  ┌─────────────┐                        │
+│  │Veracode tool│  (built-in client)     │
+│  └─────────────┘                        │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  SonarQube proxy                │    │
+│  │  spawns: docker run mcp/sonarqu │    │──► SonarQube server (Docker)
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  Aikido proxy                   │    │
+│  │  spawns: npx @aikidosec/mcp     │    │──► Aikido MCP (npx)
+│  └─────────────────────────────────┘    │
+└─────────────────────────────────────────┘
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep-dive on how the proxy mechanism works.
 
 ---
 
 ## Prerequisites
 
-- **Node.js** v18+ (required for native `fetch`)
-- **Atlassian Cloud account** (Jira & Confluence) — required
-- **Veracode API credentials** — optional
-- **SonarQube User Token** — optional
-- **GitHub PAT** — optional (for Veracode PR-to-scan matching)
+- **Docker Desktop** running on your machine
+- An **Atlassian Cloud** account (Jira + Confluence) — required
+- Credentials for any optional integrations you want to use
 
 ---
 
-## Environment Variables
+## Quick Start
 
-All configuration is done through environment variables. Copy `.env.example` to `.env` and fill in your values.
+### 1. Pull the image
 
-### Required (Atlassian)
+```bash
+docker pull ghcr.io/a-nice-piyush/zeus_dev_mcp:latest
+```
 
-| Variable | Description | Example |
-|---|---|---|
-| `ATLASSIAN_BASE_URL` | Your Atlassian Cloud URL | `https://yourcompany.atlassian.net` |
-| `ATLASSIAN_EMAIL` | Your Atlassian account email | `you@company.com` |
-| `ATLASSIAN_API_TOKEN` | API token (not your password) | `ATATT3x...` |
+Or use the locally built image (if you built from source):
 
-### Optional (Veracode)
+```bash
+# tag is zeus-mcp:latest when built locally
+```
 
-| Variable | Description | Example |
-|---|---|---|
-| `VERACODE_API_ID` | Veracode API credential ID (32-char hex) | `a1b2c3d4...` |
-| `VERACODE_API_KEY` | Veracode API secret key (128-char hex) | `e5f6a7b8...` |
-| `VERACODE_APP_NAME` | Default Veracode app profile name | `my-app-name` |
-| `GITHUB_TOKEN` | GitHub PAT with `Actions:read` scope | `ghp_abc123...` |
-| `GITHUB_REPO` | Repository in `owner/repo` format | `inContact/POCR` |
+### 2. Create your config file
 
-### Optional (SonarQube)
+Pick the section for your editor below, create the file, and fill in your credentials. **Add this file to `.gitignore` — it contains secrets.**
 
-| Variable | Description | Example |
-|---|---|---|
-| `SONARQUBE_BASE_URL` | SonarQube instance URL | `https://sonar.nice.com` |
-| `SONARQUBE_TOKEN` | User token from SonarQube UI | `squ_abc123...` |
-| `SONARQUBE_PROJECT_KEY` | Default project key | `my-project-key` |
+### 3. Reload MCP in your editor
 
-### Optional (Shared)
-
-| Variable | Description | Example |
-|---|---|---|
-| `GIT_REPO_PATH` | Local repo path for auto branch detection | `C:\Users\you\repos\POCR` |
-| `NODE_TLS_REJECT_UNAUTHORIZED` | Set to `0` for corporate TLS proxies | `0` |
+In VS Code: `Ctrl+Shift+P` → `MCP: Restart Server`  
+In Claude Code: restart the session
 
 ---
 
-## Atlassian (Jira & Confluence) Setup
+## Configuration Reference
 
-Jira and Confluence tools are **always registered** — they are the base integration.
+### Atlassian — Jira & Confluence (required)
 
-### 1. Generate an API Token
-
+**Where to get the API token:**
 1. Go to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
-2. Click **Create API token**
-3. Give it a label (e.g. `mcp-server`)
+2. Click **Create API token** → give it a name → copy it
+
+| Variable | Description |
+|---|---|
+| `ATLASSIAN_BASE_URL` | Your Atlassian Cloud URL, e.g. `https://yourcompany.atlassian.net` |
+| `ATLASSIAN_EMAIL` | Your Atlassian account email |
+| `ATLASSIAN_API_TOKEN` | API token from the link above (not your password) |
+
+---
+
+### Veracode (optional)
+
+Tools are automatically disabled if these are not set.
+
+**Where to get credentials:**
+1. Log into the Veracode web UI via SSO
+2. Click your name (top right) → **API Credentials** → **Generate API Credentials**
+3. Copy the **API ID** (32-char hex) and **API Secret Key** (128-char hex)
+
+> Credentials expire after 1 year and are separate from your SSO login.
+
+| Variable | Description |
+|---|---|
+| `VERACODE_API_ID` | 32-character hex API ID |
+| `VERACODE_API_KEY` | 128-character hex API secret key |
+| `VERACODE_APP_NAME` | Default Veracode app profile name (optional) |
+| `GITHUB_TOKEN` | GitHub PAT with `Actions:read` scope — used to match PRs to scans |
+| `GITHUB_REPO` | Repository in `owner/repo` format, e.g. `inContact/POCR` |
+
+---
+
+### SonarQube (optional)
+
+Tools are automatically disabled if `SONARQUBE_TOKEN` is not set. **Requires Docker Desktop running** — Zeus spawns the official `mcp/sonarqube` container on demand.
+
+**Where to get the token:**
+1. Log into SonarQube via SAML/SSO
+2. Go to **My Account** → **Security** → **Generate Tokens**
+3. Token type: **User Token** (not Global Analysis or Project Analysis — those are for CI scanners only)
 4. Copy the token
 
-### 2. Configure
+| Variable | Description |
+|---|---|
+| `SONARQUBE_TOKEN` | User token from above |
+| `SONARQUBE_URL` | Your SonarQube server URL, e.g. `https://sonar.yourcompany.com`. Omit for SonarQube Cloud (defaults to `https://sonarcloud.io`). Use `https://sonarqube.us` for Cloud US region. |
+| `SONARQUBE_ORG` | Organisation key — set for SonarQube Cloud, omit for SonarQube Server |
+| `SONARQUBE_PROJECT_KEY` | Default project key — tools use this automatically so you don't have to repeat it |
+| `SONARQUBE_READ_ONLY` | Set to `true` to disable write operations (optional) |
+| `TELEMETRY_DISABLED` | Set to `true` to opt out of SonarQube MCP telemetry (optional) |
 
-```
-ATLASSIAN_BASE_URL=https://yourcompany.atlassian.net
-ATLASSIAN_EMAIL=your-email@company.com
-ATLASSIAN_API_TOKEN=your-api-token
-```
-
-### Authentication
-
-All Jira and Confluence API calls use HTTP Basic Authentication:
-```
-Authorization: Basic {base64(email:apiToken)}
-```
+**Finding your project key:** In SonarQube, open your project → **Project Information** → copy the key shown there.
 
 ---
 
-## Veracode Setup
+### Aikido Security (optional)
 
-Veracode tools are **optional**. If `VERACODE_API_ID` and `VERACODE_API_KEY` are not set, they are silently disabled.
+Tools are automatically disabled if `AIKIDO_API_KEY` is not set. Zeus spawns the official `@aikidosec/mcp` package via `npx` on demand.
 
-### 1. Generate API Credentials
+**Where to get the API key:**
+1. Log into [app.aikido.dev](https://app.aikido.dev)
+2. Go to **Settings** → **Integrations** → **Public REST API**
+3. Click **Generate API Key** — copy it immediately (shown only once)
+4. The key needs at minimum `basics:read` and `issues:read` permissions
 
-1. Log into the Veracode web UI via SAML/SSO
-2. Click your name (top right) > **API Credentials**
-3. Click **Generate API Credentials**
-4. Copy the **API ID** and **API Secret Key**
-
-> API credentials are valid for **1 year** and are separate from your SSO login.
-
-### 2. Configure GitHub (for PR-to-scan matching)
-
-The `veracode_find_scan_for_pr` tool resolves your current branch to a GitHub PR, finds the CI workflow run, and matches it to a Veracode scan. This requires:
-
-- `GITHUB_TOKEN` — A PAT with `Actions:read` and `Contents:read` scopes
-- `GITHUB_REPO` — Repository in `owner/repo` format (e.g. `inContact/POCR`)
-
-### Authentication
-
-Veracode uses per-request HMAC-SHA256 signing. This is handled automatically by the client.
+| Variable | Description |
+|---|---|
+| `AIKIDO_API_KEY` | API key from above |
 
 ---
 
-## SonarQube Setup
+### Shared / Other
 
-SonarQube tools are **optional**. If `SONARQUBE_BASE_URL` and `SONARQUBE_TOKEN` are not set, they are silently disabled.
-
-### 1. Generate a User Token
-
-SAML/SSO is for the web UI only. The API requires a **User Token**:
-
-1. Log into SonarQube via SAML
-2. Go to **My Account** > **Security** > **Generate Tokens**
-3. Token type: **User Token** (not Global Analysis or Project Analysis)
-4. Give it a name (e.g. `mcp-server`)
-5. Copy the token
-
-> **Do NOT use** Global Analysis Token or Project Analysis Token — those are for scanners/CI only and cannot read issues or reports.
-
-### 2. Find Your Project Key
-
-Run `sonarqube_list_projects` after setup to find the correct project key, or check your SonarQube project settings page.
-
-### Authentication
-
-```
-Authorization: Bearer {SONARQUBE_TOKEN}
-```
+| Variable | Description |
+|---|---|
+| `NODE_TLS_REJECT_UNAUTHORIZED` | Set to `0` if behind a corporate TLS proxy that intercepts HTTPS |
+| `GIT_REPO_PATH` | Local path to your repo — used by Veracode tools to auto-detect the current Git branch |
 
 ---
 
-## Git Branch Auto-Detection
+## VS Code Setup
 
-Veracode and SonarQube tools **auto-detect the current Git branch** so developers don't need to specify it. Set `GIT_REPO_PATH` to the local path of your repository:
-
-```
-GIT_REPO_PATH=C:\Users\you\Documents\POCR
-```
-
-The server runs `git rev-parse --abbrev-ref HEAD` in this directory to detect the branch.
-
----
-
-## VS Code MCP Configuration
-
-Create or update `.vscode/mcp.json` in your workspace:
+Create `.vscode/mcp.json` in your project root:
 
 ```json
 {
   "servers": {
-    "dev-mcp": {
-      "command": "node",
-      "args": ["C:/path/to/pocr_dev_mcp/dist/index.js"],
+    "zeus-mcp": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-e", "ATLASSIAN_BASE_URL",
+        "-e", "ATLASSIAN_EMAIL",
+        "-e", "ATLASSIAN_API_TOKEN",
+        "-e", "VERACODE_API_ID",
+        "-e", "VERACODE_API_KEY",
+        "-e", "VERACODE_APP_NAME",
+        "-e", "GITHUB_TOKEN",
+        "-e", "GITHUB_REPO",
+        "-e", "SONARQUBE_TOKEN",
+        "-e", "SONARQUBE_URL",
+        "-e", "SONARQUBE_ORG",
+        "-e", "SONARQUBE_PROJECT_KEY",
+        "-e", "SONARQUBE_READ_ONLY",
+        "-e", "TELEMETRY_DISABLED",
+        "-e", "AIKIDO_API_KEY",
+        "-e", "NODE_TLS_REJECT_UNAUTHORIZED",
+        "ghcr.io/a-nice-piyush/zeus_dev_mcp:latest"
+      ],
       "env": {
         "NODE_TLS_REJECT_UNAUTHORIZED": "0",
 
-        "ATLASSIAN_BASE_URL": "https://yourcompany.atlassian.net",
-        "ATLASSIAN_EMAIL": "your-email@company.com",
-        "ATLASSIAN_API_TOKEN": "your-api-token",
+        "ATLASSIAN_BASE_URL":  "https://yourcompany.atlassian.net",
+        "ATLASSIAN_EMAIL":     "you@yourcompany.com",
+        "ATLASSIAN_API_TOKEN": "ATATT3x...",
 
-        "VERACODE_API_ID": "your-api-id",
-        "VERACODE_API_KEY": "your-api-secret-key",
+        "VERACODE_API_ID":  "your-32-char-hex-id",
+        "VERACODE_API_KEY": "your-128-char-hex-key",
         "VERACODE_APP_NAME": "your-veracode-app-name",
+        "GITHUB_TOKEN": "ghp_...",
+        "GITHUB_REPO":  "owner/repo",
 
-        "GITHUB_TOKEN": "ghp_your-token",
-        "GITHUB_REPO": "owner/repo",
-
-        "SONARQUBE_BASE_URL": "https://sonar.nice.com",
-        "SONARQUBE_TOKEN": "your-sonarqube-user-token",
+        "SONARQUBE_TOKEN":       "squ_...",
+        "SONARQUBE_URL":         "https://sonar.yourcompany.com",
         "SONARQUBE_PROJECT_KEY": "your-project-key",
 
-        "GIT_REPO_PATH": "C:/path/to/your/repo"
+        "AIKIDO_API_KEY": "your-aikido-api-key"
       }
     }
   }
 }
 ```
 
-After configuring, restart the MCP server in VS Code (Ctrl+Shift+P > "MCP: Restart Server").
+> The `-v /var/run/docker.sock:/var/run/docker.sock` mount lets the container spawn the SonarQube child container on your host's Docker daemon.
 
 ---
 
-## Claude Code Configuration
+## Claude Code Setup
 
-Add to your Claude Code MCP settings (`~/.claude/claude_desktop_config.json` or project-level):
+Create `.mcp.json` in your project root (or add to `~/.claude/claude_desktop_config.json` for global use):
 
 ```json
 {
   "mcpServers": {
-    "dev-mcp": {
-      "command": "node",
-      "args": ["C:/path/to/pocr_dev_mcp/dist/index.js"],
+    "zeus-mcp": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-e", "ATLASSIAN_BASE_URL",
+        "-e", "ATLASSIAN_EMAIL",
+        "-e", "ATLASSIAN_API_TOKEN",
+        "-e", "VERACODE_API_ID",
+        "-e", "VERACODE_API_KEY",
+        "-e", "VERACODE_APP_NAME",
+        "-e", "GITHUB_TOKEN",
+        "-e", "GITHUB_REPO",
+        "-e", "SONARQUBE_TOKEN",
+        "-e", "SONARQUBE_URL",
+        "-e", "SONARQUBE_ORG",
+        "-e", "SONARQUBE_PROJECT_KEY",
+        "-e", "AIKIDO_API_KEY",
+        "-e", "NODE_TLS_REJECT_UNAUTHORIZED",
+        "ghcr.io/a-nice-piyush/zeus_dev_mcp:latest"
+      ],
       "env": {
         "NODE_TLS_REJECT_UNAUTHORIZED": "0",
-        "ATLASSIAN_BASE_URL": "https://yourcompany.atlassian.net",
-        "ATLASSIAN_EMAIL": "your-email@company.com",
-        "ATLASSIAN_API_TOKEN": "your-api-token",
-        "VERACODE_API_ID": "your-api-id",
-        "VERACODE_API_KEY": "your-api-secret-key",
-        "VERACODE_APP_NAME": "your-veracode-app-name",
-        "GITHUB_TOKEN": "ghp_your-token",
-        "GITHUB_REPO": "owner/repo",
-        "SONARQUBE_BASE_URL": "https://sonar.nice.com",
-        "SONARQUBE_TOKEN": "your-sonarqube-user-token",
+        "ATLASSIAN_BASE_URL":  "https://yourcompany.atlassian.net",
+        "ATLASSIAN_EMAIL":     "you@yourcompany.com",
+        "ATLASSIAN_API_TOKEN": "ATATT3x...",
+        "VERACODE_API_ID":     "your-api-id",
+        "VERACODE_API_KEY":    "your-api-key",
+        "VERACODE_APP_NAME":   "your-app-name",
+        "GITHUB_TOKEN":        "ghp_...",
+        "GITHUB_REPO":         "owner/repo",
+        "SONARQUBE_TOKEN":     "squ_...",
+        "SONARQUBE_URL":       "https://sonar.yourcompany.com",
         "SONARQUBE_PROJECT_KEY": "your-project-key",
-        "GIT_REPO_PATH": "C:/path/to/your/repo"
+        "AIKIDO_API_KEY":      "your-aikido-api-key"
       }
     }
   }
 }
 ```
-
----
-
-## Build & Run
-
-```bash
-# Install dependencies
-npm install
-
-# Build (compiles TypeScript to dist/)
-npm run build
-
-# Run the server
-npm start
-
-# Development mode (auto-reloads)
-npm run dev
-```
-
-Rebuild and restart the MCP server after any code changes.
 
 ---
 
 ## Available Tools
 
-### Jira (7 tools) — always registered
+### Jira (7 tools) — always on
 
-| Tool | Description |
+| Tool | What it does |
 |---|---|
 | `jira_search_issues` | Search issues using JQL |
-| `jira_get_issue` | Get detailed issue info (description, comments, status) |
-| `jira_get_epic` | Get epic with all child stories grouped by status |
-| `jira_get_sprint` | Get active sprint issues for a board/project |
-| `jira_list_projects` | List all accessible projects |
+| `jira_get_issue` | Full issue details: description, acceptance criteria, comments, status |
+| `jira_get_epic` | Epic with all child stories grouped by status (Done / In Progress / To Do) |
+| `jira_get_sprint` | Active sprint issues for a board or project |
+| `jira_list_projects` | List all accessible Jira projects |
 | `jira_add_comment` | Add a comment to an issue |
-| `jira_update_status` | Transition an issue to a new status |
+| `jira_update_status` | Transition an issue to a new status (e.g. In Progress → In Review) |
 
-### Confluence (5 tools) — always registered
+### Confluence (5 tools) — always on
 
-| Tool | Description |
+| Tool | What it does |
 |---|---|
 | `confluence_search` | Search content using CQL |
-| `confluence_get_page` | Get page content as markdown |
-| `confluence_get_page_children` | Get child pages |
+| `confluence_get_page` | Get page content as readable markdown |
+| `confluence_get_page_children` | List child pages for navigation |
 | `confluence_list_spaces` | List available spaces |
-| `confluence_add_comment` | Add a comment to a page |
+| `confluence_add_comment` | Add a footer comment to a page |
 
-### Veracode (6 tools) — optional
+### Veracode (6 tools) — requires `VERACODE_API_ID` + `VERACODE_API_KEY`
 
-| Tool | Description |
+| Tool | What it does |
 |---|---|
 | `veracode_list_apps` | List all Veracode app profiles |
-| `veracode_list_builds` | List recent scans/builds |
-| `veracode_find_scan_for_pr` | Find scan for current branch/PR with findings |
-| `veracode_upload_and_scan` | Upload artifact and start a SAST scan |
-| `veracode_get_scan_status` | Check scan status |
-| `veracode_get_findings` | Get vulnerability findings from a completed scan |
+| `veracode_list_builds` | List recent scans/builds for an app |
+| `veracode_find_scan_for_pr` | Find the Veracode scan triggered by the current branch/PR |
+| `veracode_upload_and_scan` | Upload an artifact and start a new SAST scan |
+| `veracode_get_scan_status` | Check if a scan is complete |
+| `veracode_get_findings` | Get vulnerability findings with file path, line number, and remediation guidance |
 
-### SonarQube (3 tools) — optional
+### SonarQube (60+ tools) — requires `SONARQUBE_TOKEN`
 
-| Tool | Description |
+Proxied from the official [SonarQube MCP server](https://github.com/SonarSource/sonarqube-mcp-server). Includes tools for issues, quality gates, measures, security hotspots, rules, coverage, sources, webhooks, and more. The `SONARQUBE_PROJECT_KEY` is automatically injected so you never need to specify it.
+
+Key tools include: `search_sonar_issues_in_projects`, `get_project_quality_gate_status`, `get_component_measures`, `search_security_hotspots`, `search_my_sonarqube_projects`, `show_rule`, `get_raw_source`, and many more.
+
+### Aikido Security (6 tools) — requires `AIKIDO_API_KEY`
+
+Proxied from the official [@aikidosec/mcp](https://www.npmjs.com/package/@aikidosec/mcp) package.
+
+| Tool | What it does |
 |---|---|
-| `sonarqube_list_projects` | List accessible SonarQube projects |
-| `sonarqube_get_report` | High-level report: quality gate, metrics, issue counts |
-| `sonarqube_get_issues` | Detailed issues with file path, line number, rule |
-
----
-
-## Project Structure
-
-```
-src/
-  index.ts                              # Entry point — loads config, starts server
-  server.ts                             # Creates MCP server, registers all tools
-  config.ts                             # Config loaders for all integrations
-  utils/
-    git.ts                              # getCurrentBranch() — auto-detects branch
-  clients/
-    http-client.ts                      # Atlassian HTTP client (Basic Auth, retry on 429)
-    jira-client.ts                      # Jira REST API v3
-    jira-agile-client.ts               # Jira Agile API v1 (boards, sprints)
-    confluence-client.ts                # Confluence REST API v2
-    veracode-client.ts                  # Veracode XML API v5 (HMAC-SHA256 auth)
-    sonarqube-client.ts                 # SonarQube Web API (Bearer token auth)
-  tools/
-    jira/                               # 7 Jira MCP tools
-    confluence/                         # 5 Confluence MCP tools
-    veracode/                           # 6 Veracode MCP tools
-    sonarqube/                          # 3 SonarQube MCP tools
-  resources/
-    index.ts                            # MCP resources for Jira & Confluence
-  converters/
-    adf-to-markdown.ts                  # Atlassian Document Format to markdown
-    storage-to-markdown.ts              # Confluence storage format to markdown
-    drawio-to-text.ts                   # Draw.io diagram to text
-    truncation.ts                       # Content truncation utilities
-  types/
-    jira.ts                             # Jira type definitions
-    confluence.ts                       # Confluence type definitions
-    veracode.ts                         # Veracode type definitions
-    sonarqube.ts                        # SonarQube type definitions
-```
-
----
-
-## Documentation
-
-Detailed integration guides and usage prompts:
-
-| Document | Description |
-|---|---|
-| [JIRA-CONFLUENCE-MCP.md](JIRA-CONFLUENCE-MCP.md) | Jira & Confluence integration — architecture, API reference, workflows |
-| [VERACODE-MCP.md](VERACODE-MCP.md) | Veracode integration — HMAC auth, PR-to-scan matching, findings |
-| [SONARQUBE-MCP.md](SONARQUBE-MCP.md) | SonarQube integration — quality gates, metrics, issue drill-down |
-| [DEV-PROMPTS.md](DEV-PROMPTS.md) | Copy-paste prompts for developer workflows (Jira & Confluence) |
-| [SECURITY-SCAN-PROMPTS.md](SECURITY-SCAN-PROMPTS.md) | Copy-paste prompts for security scanning (Veracode & SonarQube) |
+| `list_repositories` | List all monitored repositories |
+| `search_repository_by_name` | Find a repository by name |
+| `get_issues` | Security issues filtered by severity and type (sast, container, iac) |
+| `get_issue_details` | Full issue details with remediation guidance |
+| `get_open_issue_groups` | Open issues grouped by vulnerability type |
+| `get_issue_group_details` | Details on a specific issue group |
 
 ---
 
 ## Troubleshooting
 
+### Tools not showing up
+
+- Check Docker Desktop is running
+- Check the server stderr output — each disabled integration logs a `tools disabled:` message with the reason
+- Verify the required env vars are set and not empty
+
 ### 401 Unauthorized
 
 | Integration | Check |
 |---|---|
-| Atlassian | Verify `ATLASSIAN_EMAIL` + `ATLASSIAN_API_TOKEN` (not your password) |
-| Veracode | Verify `VERACODE_API_ID` (32-char hex) + `VERACODE_API_KEY` (128-char hex) |
-| SonarQube | Verify `SONARQUBE_TOKEN` is a **User Token** (not Global/Project Analysis token) |
+| Atlassian | `ATLASSIAN_EMAIL` + `ATLASSIAN_API_TOKEN` (not your password) |
+| Veracode | `VERACODE_API_ID` is 32-char hex, `VERACODE_API_KEY` is 128-char hex |
+| SonarQube | Token must be **User Token** type — not Global Analysis or Project Analysis token |
 
-### TLS Certificate Error
+### TLS / certificate errors
 
-If behind a corporate proxy:
-```
-NODE_TLS_REJECT_UNAUTHORIZED=0
-```
+Set `NODE_TLS_REJECT_UNAUTHORIZED=0` if behind a corporate proxy that intercepts HTTPS. Already included in the example configs above.
 
-### Tools Not Showing Up
+### SonarQube: project not found
 
-- Veracode tools require both `VERACODE_API_ID` and `VERACODE_API_KEY`
-- SonarQube tools require both `SONARQUBE_BASE_URL` and `SONARQUBE_TOKEN`
-- Check the server stderr for "tools disabled" messages
-- Rebuild (`npm run build`) and restart the MCP server
+Verify `SONARQUBE_PROJECT_KEY` matches exactly. Find it in SonarQube → your project → **Project Information**.
 
-### Branch Not Auto-Detected
+### SonarQube: no data for a branch
 
-- Set `GIT_REPO_PATH` to the local repo path (not the MCP server path)
-- Ensure `git` is available on `PATH`
-- The path must be the repo root (where `.git/` lives)
+SonarQube only holds data for branches that have been scanned in CI. If the branch has never been analyzed, results will be empty.
 
-### Rate Limiting (Atlassian)
+### Veracode: scan not found for PR
 
-The HTTP client automatically retries on HTTP 429 with exponential backoff (up to 3 retries). If you consistently hit rate limits, reduce request frequency.
-
-### Veracode Scan Not Found
-
-- The CI-triggered scan may still be running
+- The CI-triggered scan may still be running — check Veracode UI
 - Ensure `GITHUB_TOKEN` has `Actions:read` scope
-- Check that `GITHUB_REPO` matches the correct org/repo
+- Ensure `GITHUB_REPO` matches the correct `owner/repo`
 
-### SonarQube No Data for Branch
+### Docker socket error (SonarQube tools fail)
 
-- SonarQube only has data for branches that have been analyzed in CI
-- If the branch has never been scanned, results will be empty
+The `-v /var/run/docker.sock:/var/run/docker.sock` mount in the run command is required so the Zeus container can spawn the SonarQube child container. Make sure it is present in your config.
+
+---
+
+## Building Locally
+
+```bash
+# Clone the repo
+git clone <this-repo>
+cd zeus_dev_mcp
+
+# Install dependencies
+npm install
+
+# Compile TypeScript
+npm run build
+
+# Build Docker image
+docker build -t zeus-mcp:latest .
+```
+
+To use the locally built image, replace `ghcr.io/a-nice-piyush/zeus_dev_mcp:latest` with `zeus-mcp:latest` in your config file.

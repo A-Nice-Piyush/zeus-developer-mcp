@@ -14,6 +14,12 @@ export interface VeracodeConfig {
   };
 }
 
+export interface AikidoConfig {
+  clientId: string;
+  clientSecret: string;
+  defaultRepoName?: string;
+}
+
 export function loadConfig(): AtlassianConfig {
   const baseUrl = process.env.ATLASSIAN_BASE_URL;
   const email = process.env.ATLASSIAN_EMAIL;
@@ -36,12 +42,6 @@ export function loadConfig(): AtlassianConfig {
   };
 }
 
-export interface SonarQubeConfig {
-  baseUrl: string;
-  token: string;
-  defaultProjectKey?: string;
-}
-
 export function loadVeracodeConfig(): VeracodeConfig | null {
   const apiId = process.env.VERACODE_API_ID;
   const apiKey = process.env.VERACODE_API_KEY;
@@ -58,15 +58,15 @@ export function loadVeracodeConfig(): VeracodeConfig | null {
   };
 }
 
-export function loadSonarQubeConfig(): SonarQubeConfig | null {
-  const baseUrl = process.env.SONARQUBE_BASE_URL;
-  const token = process.env.SONARQUBE_TOKEN;
-  if (!baseUrl || !token) {
+export function loadAikidoConfig(): AikidoConfig | null {
+  const clientId = process.env.AIKIDO_CLIENT_ID;
+  const clientSecret = process.env.AIKIDO_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
     return null;
   }
   return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
-    token,
-    defaultProjectKey: process.env.SONARQUBE_PROJECT_KEY,
+    clientId,
+    clientSecret,
+    defaultRepoName: process.env.AIKIDO_DEFAULT_REPO_NAME,
   };
 }
